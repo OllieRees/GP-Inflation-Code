@@ -17,7 +17,7 @@ N <- nrow(x)
 D <- ncol(x)
 
 squared.exponential.kernel.point <- function(x1, x2, l, var) {
-  var * exp(sum( (x1 - x2)^2 ) / (2 * l^2))
+  var * exp(- sum( (x1 - x2)^2 ) / (2 * l^2))
 }
 
 squared.exponential.kernel <- function(X, l, var) {
@@ -41,10 +41,11 @@ se.partial.diff.point <- function(x, i, j, d, l, var) {
   var * se.k * g2
 }
 
-se.partial.diff <- function(x, l, var, alpha) {
+se.partial.diff <- function(x, l, var, wMu, wVar) {
   N <- nrow(x)
   D <- ncol(x)
   IK <- c()
+  alpha <- rnorm(N, wMu, wVar)
   for (i in 1:N) {
     samevar <- c()
     for (d in 1:D) {
@@ -64,15 +65,14 @@ se.partial.diff <- function(x, l, var, alpha) {
   IK
 }
 
-
 # Create Covariance matrix
-cov.mat.func <- function(x, l, kVar, oVar, iVars, ws) {
+cov.mat.func <- function(x, l, kVar, oDoF, iVars, wMean, wVar) {
   iVars <- matrix(iVars, nrow = ncol(x), ncol = ncol(x), byrow = T)
-  outputNoiseVar <- diag(rep(oVar, nrow(x)))
+  outputNoiseVar <- diag(rchisq(N, oDoF))
   K <- squared.exponential.kernel(x, l, kVar)
-  d <- se.partial.diff(x, l, kVar, ws)
+  d <- se.partial.diff(x, l, kVar, wMean, wVar)
   inputNoiseVar <- d %*% iVars %*% t(d) # NxD * DxD * DxN
-  K + outputNoiseVar + inputNoiseVar
+  K + inputNoiseVar + outputNoiseVar
 }
 
 # Surrogate function: Log marginal likelihood of the score on the hyperparameters
@@ -83,15 +83,15 @@ marginal.likelihood.log = function(y, cov.mat) {
   }  
 
   cov.mat.det <- det(cov.mat)
-  print(cov.mat.det)
+  
   # If statement used to prevent certain values from causing issues with invertibility
-  if (all(is.finite(cov.mat)) && is.finite(cov.mat.det) && log(abs(cov.mat.det), 10) <= 100) {
+  if (all(is.finite(cov.mat)) && is.finite(cov.mat.det) && log(abs(cov.mat.det), 10) <= 90) {
     l <- -0.5 * (t(y) %*% solve(cov.mat) %*% y + log(abs(det(cov.mat))) + N * log(2 * pi))[1]
     if (is.finite(l)) {
       return(l)
     }
   }
-  -Inf
+  -999999
 }
 
 # Bayes optimisation using EI
@@ -100,44 +100,42 @@ obj.fun = makeSingleObjectiveFunction(
   description = "Maximises the Marginal Log Likelihood on the output",
   
   minimize = F,
-  #has.simple.signature = F,
   
   fn = function(ps) {
     l <- ps[1]
     kVar <- ps[2]
-    oVar <- ps[3]
-    iVars <- ps[4:(D^2 + 3)]
-    ws <- ps[(D^2 + 4):length(ps)]
-    cov.mat <- cov.mat.func(x, l, kVar, oVar, iVars, ws)
+    oDoF <- ps[3]
+    wsMean <- ps[4]
+    wsVar <- ps[5]
+    iVars <- ps[6:length(ps)]
+    cov.mat <- cov.mat.func(x, l, kVar, oDoF, iVars, wsMean, wsVar)
     marginal.likelihood.log(y, cov.mat)
   },
   
   par.set = makeParamSet(
-    makeNumericParam(id = "l", lower = 0, upper = 100),
-    makeNumericParam(id = "kVar", lower = 0, upper = 10),
-    makeNumericParam(id = "oVar", lower = 0, upper = 10),
-    makeNumericVectorParam(id = "iVars", ncol(x)^2, lower = 0, upper = 10),
-    makeNumericVectorParam(id = "ws", nrow(x), lower = 0, upper = 1)
+    makeNumericParam(id = "l", lower = 0, upper = 60),
+    makeNumericParam(id = "kVar", lower = 0, upper = 2),
+    
+    makeNumericParam(id = "oDoF", lower = 0, upper = 1),
+    
+    makeNumericParam(id = "wsMean", lower = 0, upper = 2),
+    makeNumericParam(id = "wsVar", lower = 0, upper = 5),
+    
+    makeNumericVectorParam(id = "iVars", ncol(x)^2, lower = 0, upper = 1)
   )
 )
 
-
-#cov.mat <- cov.mat.func(x, rnorm(1, pi), rnorm(1, 10), rnorm(1, 10), rnorm(1), rnorm(1), rnorm(13^2), rnorm(20))
-#z <- marginal.likelihood.log(y, cov.mat)
-
 ctrl <- makeMBOControl()
-ctrl <- setMBOControlTermination(ctrl, iters = 100)
-ctrl <- setMBOControlInfill(ctrl, opt.focussearch.points = 500, crit = makeMBOInfillCritEI()) 
+ctrl <- setMBOControlTermination(ctrl, iters = 200)
+ctrl <- setMBOControlInfill(ctrl, opt.focussearch.points = 1000, crit = makeMBOInfillCritEI()) 
 
 parallelStartMulticore(cpus = 20, show.info = TRUE)
 
-des <- generateDesign(n = (5 + D^2 + N) * 3, getParamSet(obj.fun), fun = lhs::geneticLHS)
-des$y <- apply(des, 1, function(xs) obj.fun(list(xs[1], xs[2], xs[3], xs[4:(D^2 + 3)], xs[(D^2 + 4):ncol(des)])))
+des <- generateDesign(n = (5 + D^2) * 3, getParamSet(obj.fun), fun = lhs::geneticLHS)
+des$y <- apply(des, 1, function(xs) obj.fun(list(xs[1], xs[2], xs[3], xs[4], xs[5], xs[6:length(xs)])))
 
 surr <- makeLearner("regr.km", predict.type = "se")
 
 res <- mbo(obj.fun, design = des, control = ctrl, learner = surr)
 
 parallelStop()
-
-print(res)
