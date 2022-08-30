@@ -7,6 +7,11 @@ library(dplyr)
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
 inflation.basket.data <- read.csv("../Datasets/CPIH_Basket_Quarterly_Reduced.csv", header = T)
 
+for (colI in c(9, 11, 12, 14)) {
+  d <- auto.arima(inflation.variates.data[, colI])$arma[6]
+  diffseries(inflation.variates.data[, colI], d)
+}
+
 inflation.variates.data$NumericTime <- 7988:8087/4
 
 # Splitting into training and testing
