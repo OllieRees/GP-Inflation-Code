@@ -6,8 +6,6 @@ library(dplyr)
 # Data frame cleaning
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
 inflation.basket.data <- read.csv("../Datasets/CPIH_Basket_Quarterly_Reduced.csv", header = T)
-rsi.data <- read.csv("../Datasets/RSI.csv", header = T)
-trade.data <-  read.csv("../Datasets/TradeValue.csv", header = T)
 
 inflation.variates.data$NumericTime <- 7988:8087/4
 

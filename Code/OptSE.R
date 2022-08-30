@@ -2,14 +2,18 @@ library(MASS)
 library(ggplot2)
 library(mlrMBO)
 library(parallelMap)
+library(fracdiff)
+library(forecast)
 
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
-# Remove time, CPIH, Bank Rate, IB rate, 10Y Gilt, Exchange rate by CPI and Lab Cost
-x <- inflation.variates.data[, -c(1, 2, 12, 14, 15, 17, 18)] 
+x <- inflation.variates.data[, -c(1, 2, 12, 14, 15, 17, 18)]# Remove time, CPIH, Bank Rate, IB rate, 10Y Gilt, Exchange rate by CPI and Lab Cost
 x$CPIHLag[2:100] <- inflation.variates.data[1:99, 2]
 x$CPIHLag[1] <- 2.9 # From ONS
+
 x <- data.matrix(x)
+ivars.cov <- cov(x, method = "kendall")/10000
+
 x <- x[41:100, ]
 y <- inflation.variates.data$CPIH[41:100]
 
@@ -66,13 +70,12 @@ se.partial.diff <- function(x, l, var, wMu, wVar) {
 }
 
 # Create Covariance matrix
-cov.mat.func <- function(x, l, kVar, oDoF, iVars, wMean, wVar) {
-  iVars <- matrix(iVars, nrow = ncol(x), ncol = ncol(x), byrow = T)
+cov.mat.func <- function(x, l, kVar, oDoF) {
   outputNoiseVar <- diag(rchisq(N, oDoF))
   K <- squared.exponential.kernel(x, l, kVar)
-  d <- se.partial.diff(x, l, kVar, wMean, wVar)
-  inputNoiseVar <- d %*% iVars %*% t(d) # NxD * DxD * DxN
-  K + inputNoiseVar + outputNoiseVar
+  #d <- se.partial.diff(x, l, kVar, wMean, wVar)
+  #inputNoiseVar <- d %*% ivars.cov %*% t(d) # NxD * DxD * DxN
+  K + outputNoiseVar
 }
 
 # Surrogate function: Log marginal likelihood of the score on the hyperparameters
@@ -105,35 +108,28 @@ obj.fun = makeSingleObjectiveFunction(
     l <- ps[1]
     kVar <- ps[2]
     oDoF <- ps[3]
-    wsMean <- ps[4]
-    wsVar <- ps[5]
-    iVars <- ps[6:length(ps)]
-    cov.mat <- cov.mat.func(x, l, kVar, oDoF, iVars, wsMean, wsVar)
+    cov.mat <- cov.mat.func(x, l, kVar, oDoF)
     marginal.likelihood.log(y, cov.mat)
   },
   
   par.set = makeParamSet(
     makeNumericParam(id = "l", lower = 0, upper = 60),
-    makeNumericParam(id = "kVar", lower = 0, upper = 2),
+    makeNumericParam(id = "kVar", lower = 0, upper = 3),
     
-    makeNumericParam(id = "oDoF", lower = 0, upper = 1),
-    
-    makeNumericParam(id = "wsMean", lower = 0, upper = 2),
-    makeNumericParam(id = "wsVar", lower = 0, upper = 5),
-    
-    makeNumericVectorParam(id = "iVars", ncol(x)^2, lower = 0, upper = 1)
+    makeNumericParam(id = "oDoF", lower = 0, upper = 2)
   )
 )
 
-ctrl <- makeMBOControl()
-ctrl <- setMBOControlTermination(ctrl, iters = 200)
-ctrl <- setMBOControlInfill(ctrl, opt.focussearch.points = 1000, crit = makeMBOInfillCritEI()) 
-
 parallelStartMulticore(cpus = 20, show.info = TRUE)
 
-des <- generateDesign(n = (5 + D^2) * 3, getParamSet(obj.fun), fun = lhs::geneticLHS)
-des$y <- apply(des, 1, function(xs) obj.fun(list(xs[1], xs[2], xs[3], xs[4], xs[5], xs[6:length(xs)])))
+ctrl <- makeMBOControl()
+ctrl <- setMBOControlInfill(ctrl, crit = makeMBOInfillCritEI())
+ctrl <- setMBOControlTermination(ctrl, iters = 500)
 
+des <- generateDesign(n = 5 * 3, getParamSet(obj.fun), fun = lhs::geneticLHS)
+des$y <- apply(des, 1, function(xs) obj.fun(list(xs[1], xs[2], xs[3])))
+
+configureMlr(on.learner.warning = "quiet", show.learner.output = FALSE)
 surr <- makeLearner("regr.km", predict.type = "se")
 
 res <- mbo(obj.fun, design = des, control = ctrl, learner = surr)
