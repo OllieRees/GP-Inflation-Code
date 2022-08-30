@@ -8,6 +8,7 @@ library(forecast)
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
 x <- inflation.variates.data[, -c(1, 2, 12, 14, 15, 17, 18)]# Remove time, CPIH, Bank Rate, IB rate, 10Y Gilt, Exchange rate by CPI and Lab Cost
+
 x$CPIHLag[2:100] <- inflation.variates.data[1:99, 2]
 x$CPIHLag[1] <- 2.9 # From ONS
 
@@ -16,9 +17,6 @@ ivars.cov <- cov(x, method = "kendall")/10000
 
 x <- x[41:100, ]
 y <- inflation.variates.data$CPIH[41:100]
-
-N <- nrow(x)
-D <- ncol(x)
 
 squared.exponential.kernel.point <- function(x1, x2, l, var) {
   var * exp(- sum( (x1 - x2)^2 ) / (2 * l^2))
@@ -35,46 +33,10 @@ squared.exponential.kernel <- function(X, l, var) {
   K
 }
 
-se.partial.diff.point <- function(x, i, j, d, l, var) {
-  x1 <- x[i]
-  x2 <- x[j]
-  x1d <- x[i, d]
-  x2d <- x[j, d]
-  se.k <- exp(-(sum( (x1 - x2)^2 ))/(2 * l^2))
-  g2 <- -1/l^2 * (x1d - x2d)
-  var * se.k * g2
-}
-
-se.partial.diff <- function(x, l, var, wMu, wVar) {
-  N <- nrow(x)
-  D <- ncol(x)
-  IK <- c()
-  alpha <- rnorm(N, wMu, wVar)
-  for (i in 1:N) {
-    samevar <- c()
-    for (d in 1:D) {
-      samedim <- c()
-      for (j in 1:N) {
-        samedim[j] <- se.partial.diff.point(x, i, j, d, l, var)
-        if (is.finite(samedim[j]) == F) {
-          samedim[j] <- 0
-        }
-      }
-      samevar[d] <- sum(samedim * alpha) 
-    }
-    IK <- rbind(IK, samevar)
-  }  
-  colnames(IK) <- colnames(x)
-  rownames(IK) <- 1:nrow(x)
-  IK
-}
-
 # Create Covariance matrix
 cov.mat.func <- function(x, l, kVar, oDoF) {
-  outputNoiseVar <- diag(rchisq(N, oDoF))
+  outputNoiseVar <- diag(rchisq(nrow(x), oDoF))
   K <- squared.exponential.kernel(x, l, kVar)
-  #d <- se.partial.diff(x, l, kVar, wMean, wVar)
-  #inputNoiseVar <- d %*% ivars.cov %*% t(d) # NxD * DxD * DxN
   K + outputNoiseVar
 }
 
@@ -115,7 +77,6 @@ obj.fun = makeSingleObjectiveFunction(
   par.set = makeParamSet(
     makeNumericParam(id = "l", lower = 0, upper = 60),
     makeNumericParam(id = "kVar", lower = 0, upper = 3),
-    
     makeNumericParam(id = "oDoF", lower = 0, upper = 2)
   )
 )

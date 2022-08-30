@@ -8,14 +8,8 @@ library(forecast)
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
 
-#for (column in c(4, 11)) {
-#   data <- inflation.variates.data[, column]
-#   d <- auto.arima(data)$arma[6]
-#   inflation.variates.data[, column] <- diffseries(inflation.variates.data[, column], d)
-#}
-
 x <- inflation.variates.data[, -c(1, 2, 12, 14, 15, 17, 18)]# Remove time, CPIH, Bank Rate, IB rate, 10Y Gilt, Exchange rate by CPI and Lab Cost
-#x <- data.frame()
+
 x$CPIHLag[2:100] <- inflation.variates.data[1:99, 2]
 x$CPIHLag[1] <- 2.9 # From ONS
 
@@ -45,49 +39,10 @@ local.periodic.kernel <- function(X, p, lp, leq, var) {
   K
 }
 
-local.periodic.partial.diff.point <- function(x, i, j, d, p, lp, leq, var) {
-  x1 <- x[i]
-  x2 <- x[j]
-  x1d <- x[i, d]
-  x2d <- x[j, d]
-  p.sin <- sin(pi/p * abs(x1 - x2))
-  p.k <- exp(-2/lp^2 * sum(p.sin^2))
-  se.k <- exp(-(sum( (x1 - x2)^2 ))/(2 * leq^2))
-  g1 <- -4/lp^2 * sin(pi/p * abs(x1d - x2d)) * cos(pi/p * abs(x1d - x2d)) * pi/p * (x1d - x2d)/abs(x1d - x2d)
-  g2 <- -1/leq^2 * (x1d - x2d)
-  var * p.k * se.k * (g1 + g2)
-}
-
-local.periodic.partial.diff <- function(x, p, lp, leq, var, wMu, wVar) {
-  N <- nrow(x)
-  D <- ncol(x)
-  IK <- c()
-  alpha <- rnorm(N, wMu, wVar)
-  for (i in 1:N) {
-    samevar <- c()
-    for (d in 1:D) {
-      samedim <- c()
-      for (j in 1:N) {
-        samedim[j] <- local.periodic.partial.diff.point(x, i, j, d, p, lp, leq, var)
-        if (is.finite(samedim[j]) == F) {
-          samedim[j] <- 0
-        }
-      }
-      samevar[d] <- sum(samedim * alpha)
-    }
-    IK <- rbind(IK, samevar)
-  }  
-  colnames(IK) <- colnames(x)
-  rownames(IK) <- 1:N
-  IK
-}
-
 # Create Covariance matrix
 cov.mat.func <- function(x, p, lp, leq, kVar, oDof) {
   outputNoiseVar <- diag(rchisq(nrow(x), oDof))
   K <- local.periodic.kernel(x, p, lp, leq, kVar)
-  #d <- local.periodic.partial.diff(x, p, lp, leq, kVar, wsMean, wsVar)
-  #inputNoiseVar <- sqrt((d %*% ivars.cov %*% t(d))^2) # NxD * DxD * DxN
   K + outputNoiseVar
 }
 
