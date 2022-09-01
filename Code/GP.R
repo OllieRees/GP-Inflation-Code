@@ -10,6 +10,12 @@ library(forecast)
 
 set.seed(30642531)
 
+# Use optimal hyper-parameters flag
+useOptimal = T
+
+# Posterior data flag
+trainingAsPostData = T
+
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
 
@@ -21,17 +27,26 @@ x$CPIHLag[1] <- 2.9
 x <- data.matrix(x)
 ivars.cov <- cov(x, method = "kendall")/10000
 
-time.train <- (7988:8087/4)[41:100]
-x.train <- x[41:100, ]
-y.train <- inflation.variates.data$CPIH[41:100]
+if (trainingAsPostData) {
+  time.train <- (7988:8087/4)[41:100]
+  x.train <- x[41:100, ]
+  y.train <- inflation.variates.data$CPIH[41:100]
 
-time.test <- (7988:8087/4)[1:40]
-x.test <- x[1:40, ]
-y.test <- inflation.variates.data$CPIH[1:40]
-
+  time.test <- (7988:8087/4)[1:40]
+  x.test <- x[1:40, ]
+  y.test <- inflation.variates.data$CPIH[1:40]
+} else {
+  time.test <- (7988:8087/4)[41:100]
+  x.test <- x[41:100, ]
+  y.test <- inflation.variates.data$CPIH[41:100]
+  
+  time.train <- (7988:8087/4)[1:40]
+  x.train <- x[1:40, ]
+  y.train <- inflation.variates.data$CPIH[1:40]
+}
 p <- res$x$p
-lp <- res$x$lp * 2
-leq <- res$x$leq * 2
+lp <- res$x$lp * ifelse(useOptimal, 2, 1)
+leq <- res$x$leq * ifelse(useOptimal, 2, 1)
 kVar <- res$x$kVar 
 oDoF <- res$x$oDoF # (or 0)
 
@@ -63,6 +78,11 @@ cov.mat.func <- function(x, y) {
 
 cov.prior <- cov.mat.func(x.test, x.test)
 
+mean.prior <- rep(0, 60)
+if (trainingAsPostData) {
+  mean.prior <- rep(0, 40)
+}
+
 # Covariance heatmap 
 levelplot(cov.prior, 
           col.regions = rainbow, 
@@ -90,9 +110,8 @@ ggplot(test.values, aes(x = x, y = y, color = variable)) + geom_line() + ggtitle
 
 # plot prior
 test.values <- data.frame(x = time.test, trueCPIH = y.test)
-y.prior <- matrix(y.test, nrow = 40)
 for (i in 1:10) {
-  y.sample.prior <- MASS::mvrnorm(1, rep(0, 40), makePsd(cov.prior))
+  y.sample.prior <- MASS::mvrnorm(1, mean.prior, makePsd(cov.prior))
   test.values[gsub(" ", "", paste("CPIH", i))] <- y.sample.prior
 }
 
@@ -134,3 +153,25 @@ for (i in 1:10000) {
 
 metrics.df <- data.frame(mean = c(mean(MSE.post), mean(MAE.post), mean(MAPE.post), mean(RMSE.post)), var = c(var(MSE.post), var(MAE.post), var(MAPE.post), var(RMSE.post)))
 rownames(metrics.df) <- c("MSE", "MAE", "MAPE", "RMSE")
+print(metrics.df)
+
+marginal.likelihood.log = function(y, cov.mat) {
+  N <- length(y)
+  if (class(y)[1] == "matrix") {
+    N <- nrow(y)
+  }  
+  
+  cov.mat.det <- det(cov.mat)
+  
+  # If statement used to prevent certain values from causing issues with invertibility
+  if (all(is.finite(cov.mat)) && is.finite(cov.mat.det) && log(abs(cov.mat.det), 10) <= 100) {
+    l <- -0.5 * (t(y) %*% solve(cov.mat) %*% y + log(abs(det(cov.mat))) + N * log(2 * pi))[1]
+    if (is.finite(l)) {
+      return(l)
+    }
+  }
+  -99999
+}
+
+print(marginal.likelihood.log(y.test, cov.prior))
+print(marginal.likelihood.log(y.train, cov.mat.func(x.train, x.train)))

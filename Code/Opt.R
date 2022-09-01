@@ -86,7 +86,7 @@ obj.fun = makeSingleObjectiveFunction(
       makeNumericParam(id = "p", lower = 0, upper = 22),
       makeNumericParam(id = "lp", lower = 0, upper = 12),
       makeNumericParam(id = "leq", lower = 0, upper = 60),
-      makeNumericParam(id = "kVar", lower = 0, upper = 3),
+      makeNumericParam(id = "kVar", lower = 0, upper = 20),
       
       makeNumericParam(id = "oDoF", lower = 0, upper = 2)
     )
