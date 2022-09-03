@@ -13,7 +13,6 @@ x$CPIHLag[2:100] <- inflation.variates.data[1:99, 2]
 x$CPIHLag[1] <- 2.9 # From ONS
 
 x <- data.matrix(x)
-ivars.cov <- cov(x, method = "kendall")/10000
 
 x <- x[41:100, ]
 y <- inflation.variates.data$CPIH[41:100]

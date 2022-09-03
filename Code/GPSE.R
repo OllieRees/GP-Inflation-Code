@@ -16,6 +16,9 @@ useOptimal = T
 # Posterior data flag
 trainingAsPostData = T
 
+# Uses GP Allocation (last 60% as training data)
+useGPAllocation = T
+
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
 
@@ -25,24 +28,31 @@ x$CPIHLag[2:100] <- inflation.variates.data[1:99, 2]
 x$CPIHLag[1] <- 2.9 # From ONS
 
 x <- data.matrix(x)
-ivars.cov <- cov(x, method = "kendall")/10000
+
+inds.train <- 41:100
+inds.test <- 1:40
+
+if (useGPAllocation == F) {
+  inds.train <- 1:80
+  inds.test <- 81:100
+}
 
 if (trainingAsPostData) {
-  time.train <- (7988:8087/4)[41:100]
-  x.train <- x[41:100, ]
-  y.train <- inflation.variates.data$CPIH[41:100]
-
-  time.test <- (7988:8087/4)[1:40]
-  x.test <- x[1:40, ]
-  y.test <- inflation.variates.data$CPIH[1:40]
-} else {
-  time.test <- (7988:8087/4)[41:100]
-  x.test <- x[41:100, ]
-  y.test <- inflation.variates.data$CPIH[41:100]
+  time.train <- (7988:8087/4)[inds.train]
+  x.train <- x[inds.train, ]
+  y.train <- inflation.variates.data$CPIH[inds.train]
   
-  time.train <- (7988:8087/4)[1:40]
-  x.train <- x[1:40, ]
-  y.train <- inflation.variates.data$CPIH[1:40]
+  time.test <- (7988:8087/4)[inds.test]
+  x.test <- x[inds.test, ]
+  y.test <- inflation.variates.data$CPIH[inds.test]
+} else {
+  time.train <- (7988:8087/4)[inds.test]
+  x.train <- x[inds.test, ]
+  y.train <- inflation.variates.data$CPIH[inds.test]
+  
+  time.test <- (7988:8087/4)[inds.train]
+  x.test <- x[inds.train, ]
+  y.test <- inflation.variates.data$CPIH[inds.train]
 }
 
 l <- res$x$l * ifelse(useOptimal, 2, 1)
@@ -73,9 +83,16 @@ cov.mat.func <- function(x, y) {
 
 cov.prior <- cov.mat.func(x.test, x.test)
 
-mean.prior <- rep(0, 60)
-if (trainingAsPostData) {
-  mean.prior <- rep(0, 40)
+if (useGPAllocation) {
+  mean.prior <- rep(0, 60)
+  if (trainingAsPostData) {
+    mean.prior <- rep(0, 40)
+  }
+} else {
+  mean.prior <- rep(0, 80)
+  if (trainingAsPostData) {
+    mean.prior <- rep(0, 20)
+  }
 }
 
 # Covariance heatmap 
@@ -135,20 +152,18 @@ ggplot(train.values, aes(x = x, y = y, color = variable)) + geom_line() + geom_s
 
 # Mean and Variance of MAE, MSE, and RMSE
 MSE.post <- c()
-MAE.post <- c()
 MAPE.post <- c()
 RMSE.post <- c()
 for (i in 1:10000) {
   y.post <- MASS::mvrnorm(1, mean, makePsd(cov.post))
   r <- y.train - y.post
   MSE.post[i] <- mean((r)^2)
-  MAE.post[i] <- mean(abs(r))
   MAPE.post[i] <- mean(abs(r/y.train))
   RMSE.post[i] <- mean(sqrt((r)^2))
 }
 
-metrics.df <- data.frame(mean = c(mean(MSE.post), mean(MAE.post), mean(MAPE.post), mean(RMSE.post)), var = c(var(MSE.post), var(MAE.post), var(MAPE.post), var(RMSE.post)))
-rownames(metrics.df) <- c("MSE", "MAE", "MAPE", "RMSE")
+metrics.df <- data.frame(mean = c(mean(MSE.post), mean(MAPE.post), mean(RMSE.post)), var = c(var(MSE.post), var(MAPE.post), var(RMSE.post)))
+rownames(metrics.df) <- c("MSE", "MAPE", "RMSE")
 print(metrics.df)
 
 marginal.likelihood.log = function(y, cov.mat) {
