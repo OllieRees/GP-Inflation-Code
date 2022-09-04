@@ -45,18 +45,27 @@ print(summary(fit))
 # Plots
 # Plot forecast on unforseen data 
 test.forecast <- forecast(fit, h = 20, xreg = as.matrix(test[, -c(1, 2, 20)]))
-plot(test.forecast)
-print(test.forecast)
 
 # Plot residuals
 print(length(test$NumericTime))
-plot(x = test$NumericTime, y = sqrt((test$CPIH - test.forecast$mean)^2), xlab = "Time", ylab = "MSE", main = "MSE when Forecasting on Testing Data",
+plot(x = test$NumericTime, y = sqrt((test$CPIH - test.forecast$mean)^2), xlab = "Time", ylab = "RSE", main = "RSE when Forecasting on Testing Data",
      col = "red", pch = 10)
 print(paste("Residual mean: ", mean(sqrt((test$CPIH - test.forecast$mean)^2))))
 
+residuals.regression <- residuals(fit, type="regression")
+residuals.innovation <- residuals(fit, type="innovation")
 # Regression errors is the ARMA term and ARIMA error is the noise 
-cbind("Regression Errors" = residuals(fit, type="regression"), 
-      "ARIMA errors" = residuals(fit, type="innovation")) %>%
+cbind("Regression Errors" = residuals.regression, 
+      "ARIMA errors" = residuals.innovation) %>%
   autoplot(facets=TRUE)
+
+print(mean(residuals.regression))
+print(mean(residuals.innovation))
+
+par(mfrow=c(1, 2))
+resacf <- acf(residuals.regression, lag.max = 20, plot = F)
+plot(resacf, main = "ACF of Regression Residuals")
+resacf <- acf(residuals.innovation, lag.max = 20, plot = F)
+plot(resacf, main = "ACF of Innovation Residuals")
 
 checkresiduals(fit)
