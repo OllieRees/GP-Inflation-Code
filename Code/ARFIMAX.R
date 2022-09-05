@@ -15,6 +15,7 @@ for (colI in c(9, 11, 12, 14)) {
 inflation.variates.data$NumericTime <- 7988:8087/4
 
 # Splitting into training and testing
+# Change these to 41:100 and 1:40 for allocation 2
 train <- inflation.variates.data[1:80, ]
 test <- inflation.variates.data[81:100, ]
 

@@ -55,7 +55,7 @@ if (trainingAsPostData) {
   y.test <- inflation.variates.data$CPIH[inds.train]
 }
 
-l <- res$x$l * ifelse(useOptimal, 2, 1)
+l <- res$x$l * ifelse(useOptimal, ifelse(useGPAllocation, 2, 3), 1)
 kVar <- res$x$kVar
 oDoF <- res$x$oDoF
 

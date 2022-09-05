@@ -17,7 +17,7 @@ useOptimal = T
 trainingAsPostData = T
 
 # Uses GP Allocation (last 60% as training data)
-useGPAllocation = T
+useGPAllocation = F
 
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
@@ -56,8 +56,8 @@ if (trainingAsPostData) {
 }
 
 p <- res$x$p
-lp <- res$x$lp * ifelse(useOptimal, 2, 1)
-leq <- res$x$leq * ifelse(useOptimal, 2, 1)
+lp <- res$x$lp * ifelse(useOptimal, ifelse(useGPAllocation, 2, 3), 1)
+leq <- res$x$leq * ifelse(useOptimal, ifelse(useGPAllocation, 2, 3), 1)
 kVar <- res$x$kVar 
 oDoF <- res$x$oDoF # (or 0)
 
