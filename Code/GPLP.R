@@ -17,7 +17,7 @@ useOptimal = T
 trainingAsPostData = T
 
 # Uses GP Allocation (last 60% as training data)
-useGPAllocation = F
+useGPAllocation = T
 
 # Data
 inflation.variates.data <- read.csv("../Datasets/CPIH_Quarterly_Reduced.csv", header = T)
